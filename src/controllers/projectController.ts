@@ -1,15 +1,15 @@
 import { Request, Response } from "express";
-import Project from "../models/Project"; // Adjust path if needed
-import { IUser } from "../models/User";
-import Team from "../models/Team";
-import moment from "moment";
-import Task from "../models/Task"; // Importing the Task model
-import User from "../models/User"; // Importing the User model
+import mongoose from "mongoose";
 import schedule from "node-schedule";
+import Project from "../models/Project"; // Adjust path if needed
+import Task from "../models/Task"; // Importing the Task model
+import Team from "../models/Team";
+import User, { IUser } from "../models/User"; // Importing the User model
 import sendEmail from "../utils/emailService";
 import {
   missedTaskEmailTemplate,
   taskReminderEmailTemplate,
+  taskActivationEmailTemplate,
 } from "../utils/emailTemplate";
 
 // Define a custom Request type to include the user property
@@ -20,11 +20,15 @@ const isPopulatedUser = (user: any): user is IUser =>
   user && typeof user.email === "string";
 
 // Helper function to calculate dates based on recurrence
+// Helper function to calculate dates based on recurrence and due_type
 const calculateRecurrenceDates = (recurrence: any, startDate: Date) => {
   const tasks: { start: Date; due: Date }[] = [];
-  const { frequency, interval, byweekday } = recurrence;
+  const { frequency, interval, byweekday, due_type, after, date } = recurrence;
 
   const taskDueTime = "23:59"; // Default task due time
+  let currentDate = new Date(startDate);
+
+  const isBeforeEndDate = (dueDate: Date, endDate: Date) => dueDate <= endDate;
 
   switch (frequency) {
     case "once":
@@ -37,43 +41,102 @@ const calculateRecurrenceDates = (recurrence: any, startDate: Date) => {
       break;
 
     case "daily":
-      for (let i = 0; i < interval; i++) {
-        const start = new Date(startDate);
-        const due = new Date(start);
-        due.setDate(start.getDate() + i);
-        tasks.push({ start, due });
+      if (due_type === "After") {
+        for (let i = 0; i < after; i++) {
+          const start = new Date(currentDate);
+          const due = new Date(
+            `${start.toISOString().split("T")[0]}T${taskDueTime}`
+          );
+          tasks.push({ start, due });
+          currentDate.setDate(currentDate.getDate() + interval);
+        }
+      } else if (due_type === "Date") {
+        const endDate = new Date(date);
+        while (isBeforeEndDate(currentDate, endDate)) {
+          const start = new Date(currentDate);
+          const due = new Date(
+            `${start.toISOString().split("T")[0]}T${taskDueTime}`
+          );
+          tasks.push({ start, due });
+          currentDate.setDate(currentDate.getDate() + interval);
+        }
       }
       break;
 
     case "weekly":
-      for (let i = 0; i < interval; i++) {
-        const start = new Date(startDate);
-        byweekday.forEach((day: number) => {
-          const weeklyStart = new Date(start);
-          weeklyStart.setDate(weeklyStart.getDate() + (day - start.getDay()));
-          const weeklyDue = new Date(
-            `${weeklyStart.toISOString().split("T")[0]}T${taskDueTime}`
-          );
-          tasks.push({ start: weeklyStart, due: weeklyDue });
-        });
+      if (due_type === "After") {
+        for (let i = 0; i < after; i++) {
+          byweekday.forEach((day: number) => {
+            const start = new Date(currentDate);
+            start.setDate(start.getDate() + (day - start.getDay()));
+            const due = new Date(
+              `${start.toISOString().split("T")[0]}T${taskDueTime}`
+            );
+            tasks.push({ start, due });
+          });
+          currentDate.setDate(currentDate.getDate() + 7 * interval);
+        }
+      } else if (due_type === "Date") {
+        const endDate = new Date(date);
+        while (isBeforeEndDate(currentDate, endDate)) {
+          byweekday.forEach((day: number) => {
+            const start = new Date(currentDate);
+            start.setDate(start.getDate() + (day - start.getDay()));
+            const due = new Date(
+              `${start.toISOString().split("T")[0]}T${taskDueTime}`
+            );
+            if (isBeforeEndDate(start, endDate)) {
+              tasks.push({ start, due });
+            }
+          });
+          currentDate.setDate(currentDate.getDate() + 7 * interval);
+        }
       }
       break;
 
     case "monthly":
-      for (let i = 0; i < interval; i++) {
-        const start = new Date(startDate);
-        const due = new Date(start);
-        due.setMonth(start.getMonth() + i);
-        tasks.push({ start, due });
+      if (due_type === "After") {
+        for (let i = 0; i < after; i++) {
+          const start = new Date(currentDate);
+          const due = new Date(
+            `${start.toISOString().split("T")[0]}T${taskDueTime}`
+          );
+          tasks.push({ start, due });
+          currentDate.setMonth(currentDate.getMonth() + interval);
+        }
+      } else if (due_type === "Date") {
+        const endDate = new Date(date);
+        while (isBeforeEndDate(currentDate, endDate)) {
+          const start = new Date(currentDate);
+          const due = new Date(
+            `${start.toISOString().split("T")[0]}T${taskDueTime}`
+          );
+          tasks.push({ start, due });
+          currentDate.setMonth(currentDate.getMonth() + interval);
+        }
       }
       break;
 
     case "yearly":
-      for (let i = 0; i < interval; i++) {
-        const start = new Date(startDate);
-        const due = new Date(start);
-        due.setFullYear(start.getFullYear() + i);
-        tasks.push({ start, due });
+      if (due_type === "After") {
+        for (let i = 0; i < after; i++) {
+          const start = new Date(currentDate);
+          const due = new Date(
+            `${start.toISOString().split("T")[0]}T${taskDueTime}`
+          );
+          tasks.push({ start, due });
+          currentDate.setFullYear(currentDate.getFullYear() + interval);
+        }
+      } else if (due_type === "Date") {
+        const endDate = new Date(date);
+        while (isBeforeEndDate(currentDate, endDate)) {
+          const start = new Date(currentDate);
+          const due = new Date(
+            `${start.toISOString().split("T")[0]}T${taskDueTime}`
+          );
+          tasks.push({ start, due });
+          currentDate.setFullYear(currentDate.getFullYear() + interval);
+        }
       }
       break;
 
@@ -81,15 +144,51 @@ const calculateRecurrenceDates = (recurrence: any, startDate: Date) => {
       break;
   }
 
+  console.log({ tasks });
   return tasks;
 };
 
-
-
 // Schedule a reminder 1 day before the due date and missed task handling
-const scheduleReminder = (task: any) => {
+const scheduleReminder = (task: any, projectName: string) => {
   const reminderDate = new Date(task.due_date);
   reminderDate.setDate(reminderDate.getDate() - 1); // Set reminder to 1 day before
+
+  // Job to mark task as active at the date_start
+  schedule.scheduleJob(
+    task._id.toString() + "-active",
+    task.date_start,
+    async () => {
+      const foundTask = await Task.findById(task._id);
+      if (foundTask && foundTask.current_status !== "Completed") {
+        foundTask.current_status = "Active"; // Set status to Active
+        await foundTask.save();
+
+        // Notify users of task activation
+        const recipients: string[] = [];
+
+        foundTask.assign_to.forEach((user: any) => {
+          if (isPopulatedUser(user)) {
+            recipients.push(user.email);
+          }
+        });
+
+        if (isPopulatedUser(foundTask.created_by)) {
+          recipients.push(foundTask.created_by.email);
+        }
+
+        const uniqueRecipients = Array.from(new Set(recipients));
+        for (const email of uniqueRecipients) {
+          const { subject, text } = taskActivationEmailTemplate(
+            foundTask.title,
+            projectName
+          );
+          await sendEmail(email, subject, text);
+        }
+
+        console.log(`Task "${foundTask.title}" is now Active.`);
+      }
+    }
+  );
 
   // Reminder job
   schedule.scheduleJob(task._id.toString(), reminderDate, async () => {
@@ -172,7 +271,6 @@ const scheduleReminder = (task: any) => {
   );
 };
 
-// Main project creation function (updated)
 export const createProject = async (
   req: AuthenticatedRequest,
   res: Response
@@ -183,11 +281,17 @@ export const createProject = async (
       instruction,
       team,
       assigned_role,
-      locations_at,
+      locations_at = [],
       followers,
       recurrence,
     } = req.body;
 
+    // Validate required fields
+    if (!title || !instruction || !team || !assigned_role || !recurrence) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    // Validate recurrence type
     const validRecurrenceTypes = [
       "once",
       "daily",
@@ -198,33 +302,160 @@ export const createProject = async (
     if (!validRecurrenceTypes.includes(recurrence?.frequency)) {
       return res
         .status(400)
-        .json({ error: "Invalid recurrence frequency type" });
+        .json({ error: "Invalid recurrence frequency type." });
     }
 
+    // Fetch main team details
     const mainTeam = await Team.findById(team).exec();
     if (!mainTeam) {
-      return res.status(404).json({ error: "Main team not found" });
+      return res.status(404).json({ error: "Main team not found." });
     }
 
+    // Fetch child teams of the main team
     const childTeams = await Team.find({ parent_team: team }).exec();
-    let allLocations: any = [];
-    const parentTasks: any[] = []; // Array to hold tasks for the parent project
+    const allTeams = [mainTeam, ...childTeams];
 
-    const childProjects = await Promise.all(
+    console.log(mainTeam.locations);
+    console.log(locations_at);
+    // Initialize allLocations and fetch relevant locations based on the input
+    let allLocations: any[] = [];
+
+    if (locations_at.length > 0) {
+      // Filter to get only valid locations from locations_at that exist in mainTeam.locations
+      const validLocations = locations_at.filter((locId: string) =>
+        mainTeam.locations?.some((teamLoc: any) => teamLoc.equals(locId))
+      );
+
+      // If valid locations are found, set allLocations to them
+      if (validLocations.length > 0) {
+        allLocations = validLocations.map(
+          (id: string) => new mongoose.Types.ObjectId(id)
+        ); // Convert string to ObjectId
+      }
+    } else {
+      allLocations = mainTeam.locations || [];
+    }
+
+    // console.log(allLocations)
+    // Helper function to find assigned users by role
+    const getAssignedUserIds = async (role: string) => {
+      const assignedUsers = await User.find({ role }).exec();
+      return assignedUsers.map((user) => user._id);
+    };
+
+    // Create tasks for the team and their locations
+    const createTasksForLocations = async (
+      team: any,
+      locations: any[],
+      assignedUserIds: any[]
+    ) => {
+      const tasks: any[] = [];
+      await Promise.all(
+        locations.map(async (location) => {
+          const taskRecurrenceDates = calculateRecurrenceDates(
+            recurrence,
+            new Date()
+          );
+          await Promise.all(
+            taskRecurrenceDates.map(async (taskDate) => {
+              const task = new Task({
+                title: `${title} - Task for ${team.team_name} at ${location.location_name}`,
+                description: `Task for project: ${title} at ${location.location_name}`,
+                created_by: req.user!._id,
+                due_date: taskDate.due,
+                date_start: taskDate.start,
+                assign_to: assignedUserIds,
+                followers,
+                team: team._id,
+                location,
+                project: null,
+                is_active: true,
+                current_status: "Active",
+                date_created: Date.now(),
+              });
+              const savedTask = await task.save();
+              tasks.push(savedTask);
+
+              // Schedule reminder and missed task handling
+              scheduleReminder(savedTask, title);
+            })
+          );
+        })
+      );
+      return tasks;
+    };
+
+    // If no child teams exist, create parent project and tasks directly for main team
+    if (childTeams.length === 0) {
+      const assignedUserIds = await getAssignedUserIds(assigned_role);
+      const tasks = await createTasksForLocations(
+        mainTeam,
+        allLocations,
+        assignedUserIds
+      );
+
+      // Create parent project
+      const parentProject = new Project({
+        title: `${title} - Parent Project`,
+        instruction,
+        team: mainTeam._id,
+        assigned_role,
+        locations_at: allLocations,
+        no_of_tasks: tasks.length,
+        followers,
+        recurrence,
+        created_by: req.user!._id,
+        date_created: Date.now(),
+        date_modified: Date.now(),
+        tasks,
+      });
+
+      const savedParentProject = await parentProject.save();
+
+      // Link tasks to the parent project
+      await Task.updateMany(
+        { _id: { $in: tasks.map((task) => task._id) } },
+        { project: savedParentProject._id }
+      );
+
+      return res.status(201).json({
+        message: "Parent project and tasks created successfully.",
+        parentProject: savedParentProject,
+      });
+    }
+
+    // Proceed with child project creation if child teams exist
+    // Proceed with child project creation if child teams exist
+    const parentTasks: any[] = [];
+    const childProjectIds: mongoose.Types.ObjectId[] = [];
+
+    await Promise.all(
       childTeams.map(async (childTeam) => {
-        const locations =
-          locations_at?.filter((loc: any) =>
-            childTeam.locations?.includes(loc)
-          ) || childTeam.locations;
-        allLocations = [...allLocations, ...locations];
+        let childLocations;
 
+        if (locations_at.length > 0) {
+          // Use locations_at if provided and filter it based on child team's locations
+          childLocations = locations_at.filter((locId: string) =>
+            childTeam.locations?.some((teamLoc: any) =>
+              teamLoc._id.equals(locId)
+            )
+          );
+        } else {
+          // Use all locations of the child team if locations_at is not provided
+          childLocations = childTeam.locations || [];
+        }
+
+        // Collect all locations for the parent project
+        allLocations = [...new Set([...allLocations, ...childLocations])];
+
+        // Create child project
         const childProject = new Project({
           title: `${title} - ${childTeam.team_name}`,
           instruction,
           team: childTeam._id,
           assigned_role,
-          locations_at: locations,
-          no_of_tasks: locations.length,
+          locations_at: childLocations,
+          no_of_tasks: childLocations.length,
           followers,
           recurrence,
           created_by: req.user!._id,
@@ -233,56 +464,27 @@ export const createProject = async (
         });
 
         const savedChildProject = await childProject.save();
+        childProjectIds.push(savedChildProject._id as mongoose.Types.ObjectId);
 
-        // Find users based on the assigned role
-        const assignedUsers = await User.find({ role: assigned_role }).exec();
-        const assignedUserIds = assignedUsers.map((user) => user._id);
+        // Find assigned users for child teams
+        const assignedUserIds = await getAssignedUserIds(assigned_role);
 
-        const tasks: any[] = [];
-
-        // Create a task for each location
-        await Promise.all(
-          locations.map(async (location: any) => {
-            const taskRecurrenceDates = calculateRecurrenceDates(
-              recurrence,
-              new Date()
-            );
-
-            return Promise.all(
-              taskRecurrenceDates.map(async (taskDate) => {
-                const task = new Task({
-                  title: `${title} - Task for ${childTeam.team_name} at ${location.location_name}`,
-                  description: `Task for project: ${title} at ${location.location_name}`,
-                  created_by: req.user!._id,
-                  due_date: taskDate.due,
-                  date_start: taskDate.start,
-                  assign_to: assignedUserIds, // Assigning found users
-                  followers,
-                  team: childTeam._id,
-                  project: savedChildProject._id,
-                  location: location,
-                  is_active: true,
-                  is_closed: false,
-                  is_expired: false,
-                  current_status: "Active",
-                  date_created: Date.now(),
-                });
-
-                const savedTask = await task.save();
-                tasks.push(savedTask);
-                parentTasks.push(savedTask);
-
-                // Schedule reminder and missed task handling
-                scheduleReminder(savedTask);
-              })
-            );
-          })
+        // Create tasks for the child team
+        const childTasks = await createTasksForLocations(
+          childTeam,
+          childLocations,
+          assignedUserIds
         );
+        parentTasks.push(...childTasks);
 
-        savedChildProject.tasks = tasks;
+        // Update child project with created tasks
+        savedChildProject.tasks = childTasks;
+        savedChildProject.no_of_tasks = childTasks.length;
+        await Task.updateMany(
+          { _id: { $in: childTasks.map((task) => task._id) } },
+          { project: savedChildProject._id } // Set project ID for child tasks
+        );
         await savedChildProject.save();
-
-        return { project: savedChildProject, tasks };
       })
     );
 
@@ -293,25 +495,32 @@ export const createProject = async (
       team: mainTeam._id,
       assigned_role,
       locations_at: allLocations,
-      no_of_tasks: allLocations.length,
+      no_of_tasks: parentTasks.length,
       followers,
       recurrence,
       created_by: req.user!._id,
       date_created: Date.now(),
       date_modified: Date.now(),
       tasks: parentTasks,
+      child_projects: childProjectIds,
     });
 
     const savedParentProject = await parentProject.save();
 
+    // Update all child projects with the parent project ID
+    await Project.updateMany(
+      { _id: { $in: childProjectIds } },
+      { parent_project: savedParentProject._id }
+    );
+
     res.status(201).json({
-      message: "Projects and tasks created successfully",
+      message: "Projects and tasks created successfully.",
       parentProject: savedParentProject,
-      childProjects,
+      childProjects: await Project.find({ _id: { $in: childProjectIds } }),
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error." });
   }
 };
 
@@ -344,55 +553,6 @@ export const getProjectById = async (req: Request, res: Response) => {
   }
 };
 
-// Update a project by ID
-export const updateProject = async (req: Request, res: Response) => {
-  try {
-    const {
-      title,
-      instruction,
-      team,
-      assigned_role,
-      locations_at,
-      followers,
-      recurrence,
-    } = req.body;
-
-    const updatedProject = await Project.findByIdAndUpdate(
-      req.params.id,
-      {
-        title,
-        instruction,
-        team,
-        assigned_role,
-        locations_at,
-        followers,
-        recurrence: recurrence
-          ? {
-              frequency: recurrence.frequency,
-              interval: recurrence.interval,
-              byweekday: recurrence.byweekday,
-              custom_attrs: {
-                dtstart_local: recurrence.custom_attrs?.dtstart_local || "",
-                start_initial_project_now:
-                  recurrence.custom_attrs?.start_initial_project_now || false,
-              },
-            }
-          : undefined,
-        date_modified: Date.now(),
-      },
-      { new: true }
-    ).populate("team assigned_role locations_at followers");
-
-    if (!updatedProject) {
-      return res.status(404).json({ error: "Project not found" });
-    }
-    res.status(200).json(updatedProject);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-
 // Delete a project by ID
 export const deleteProject = async (req: Request, res: Response) => {
   try {
@@ -404,5 +564,33 @@ export const deleteProject = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// Fetch all projects without a parent (i.e., parent_project is null)
+export const getParentProjects = async (req: Request, res: Response) => {
+  try {
+    const parentProjects = await Project.find({ parent_project: null });
+    res.status(200).json(parentProjects);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching parent projects", error });
+  }
+};
+
+// Fetch all projects with a specific parent project ID
+export const getChildProjects = async (req: Request, res: Response) => {
+  try {
+    const { parentProjectId } = req.params;
+
+    if (!parentProjectId) {
+      return res.status(400).json({ message: "parentProjectId is required" });
+    }
+
+    const childProjects = await Project.find({
+      parent_project: parentProjectId,
+    });
+    res.status(200).json(childProjects);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching child projects", error });
   }
 };

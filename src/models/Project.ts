@@ -34,6 +34,9 @@ export interface IProject extends Document {
             dtstart_local: string;
             start_initial_project_now: boolean;
         };
+        due_type: 'After' | 'Date'; // New field for due_type
+        after?: number; // Number of recurrences if due_type is 'After'
+        date?: Date; // End date if due_type is 'Date'
     };
     assigned_role: mongoose.Types.ObjectId; // Reference to Hierarchy schema
     assigned_users: mongoose.Types.ObjectId[]; // Array of User references
@@ -45,7 +48,7 @@ const ProjectSchema: Schema<IProject> = new Schema({
     title: { type: String, required: true },
     instruction: { type: String, required: true },
     no_of_tasks: { type: Number, required: true },
-    no_of_tasks_closed: { type: Number, default:0 },
+    no_of_tasks_closed: { type: Number, default: 0 },
     tasks_form_template: {
         id: { type: Number }
     },
@@ -71,17 +74,20 @@ const ProjectSchema: Schema<IProject> = new Schema({
     parent_project: { type: Schema.Types.ObjectId, ref: 'Project' },
     child_projects: [{ type: Schema.Types.ObjectId, ref: 'Project' }],
     recurrence: {
-        frequency: { type: String },
-        interval: { type: Number },
-        byweekday: [{ type: String }],
+        frequency: { type: String }, // e.g., 'daily', 'weekly', 'monthly', 'yearly'
+        interval: { type: Number },  // e.g., repeat every 1, 2, 3... days/weeks/months/years
+        byweekday: [{ type: String }], // e.g., ['Monday', 'Wednesday']
         custom_attrs: {
             dtstart_local: { type: String },
             start_initial_project_now: { type: Boolean, default: false }
-        }
+        },
+        // New recurrence fields
+        due_type: { type: String, enum: ['After', 'Date'], required: true },  // 'After' or 'Date'
+        after: { type: Number }, // If due_type is 'After', defines the number of occurrences
+        date: { type: Date } // If due_type is 'Date', defines the end date for the recurrence
     },
-    // New fields
     tasks: [{ type: Schema.Types.ObjectId, ref: 'Task' }], // Array of task references
-    followers: [{ type: Schema.Types.ObjectId, ref: 'User' }], // Array of users
+    followers: [{ type: Schema.Types.ObjectId, ref: 'User' }], // Array of user references
     assigned_role: { type: Schema.Types.ObjectId, ref: 'Hierarchy', required: true },
     assigned_users: [{ type: Schema.Types.ObjectId, ref: 'User' }], // Array of user references
     team: { type: Schema.Types.ObjectId, ref: 'Team', required: true },

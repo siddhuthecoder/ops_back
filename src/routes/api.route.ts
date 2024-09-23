@@ -127,14 +127,16 @@ import {
   deleteProject,
   getAllProjects,
   getProjectById,
-  updateProject,
+  getParentProjects,
+  getChildProjects,
 } from "../controllers/projectController";
 
 // Create a new project (Admin only)
 router.post("/projects/create", authMiddleware, isAdmin, createProject);
 router.get("/projects/getAll", authMiddleware, getAllProjects);
 router.get("/projects/get/:projectId", authMiddleware, getProjectById);
-router.put("/projects/update/:projectId", authMiddleware, isAdmin, updateProject);
 router.delete("/projects/delete/:projectId", authMiddleware, isAdmin, deleteProject);
+router.get('/projects/parents',authMiddleware, getParentProjects);
+router.get('/projects/children/:parentProjectId', authMiddleware,getChildProjects);
 
 export default router;

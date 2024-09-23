@@ -38,7 +38,7 @@ export const unviewedAnnouncementEmailTemplate = (
     const text = `Dear user,
   
   We noticed that you haven't viewed the recent announcement yet:
-  
+ 
   Title: ${title}
   
   Description: ${description}
@@ -118,6 +118,25 @@ export const taskCompletionEmailTemplate = (
 We are pleased to inform you that the task "${taskTitle}" has been successfully completed.
 
 Thank you for your effort!
+
+Best regards,
+[OPS-360]`;
+
+  return { subject, text };
+};
+
+
+// Task activation email template
+export const taskActivationEmailTemplate = (
+  taskTitle: string,
+  projectName: string
+): { subject: string; text: string } => {
+  const subject = `New Task Created: "${taskTitle}" under Project "${projectName}"`;
+  const text = `Dear user,
+
+A new task titled "${taskTitle}" has been created for you under the project "${projectName}".
+
+Please check your task list for further details.
 
 Best regards,
 [OPS-360]`;

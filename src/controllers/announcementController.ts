@@ -6,9 +6,11 @@ import User, { IUser } from "../models/User"; // Adjust the path as necessary
 import Hierarchy from "../models/Role"; // Import your Role model
 import schedule from "node-schedule";
 import moment from "moment-timezone";
-import { announcementEmailTemplate ,unviewedAnnouncementEmailTemplate} from '../utils/emailTemplate';
-import sendEmail from '../utils/emailService';
-
+import {
+  announcementEmailTemplate,
+  unviewedAnnouncementEmailTemplate,
+} from "../utils/emailTemplate";
+import sendEmail from "../utils/emailService";
 
 interface AuthenticatedRequest extends Request {
   user?: IUser;
@@ -83,20 +85,26 @@ const getRecipients = async ({
   return [...new Set(recipients)];
 };
 
-const sendAnnouncementEmails = async (recipients: Array<{ email: string }>, title: string, description: string): Promise<void> => {
+const sendAnnouncementEmails = async (
+  recipients: Array<{ email: string }>,
+  title: string,
+  description: string
+): Promise<void> => {
   try {
-      console.log(recipients);
-      const { subject, text } = announcementEmailTemplate(title, description);
-      
-      // Sending emails to all recipients
-      await Promise.all(recipients.map(async (recipient) => {
-          await sendEmail(recipient.email, subject, text);
-      }));
+    console.log(recipients);
+    const { subject, text } = announcementEmailTemplate(title, description);
 
-      console.log('Emails sent successfully to all recipients');
+    // Sending emails to all recipients
+    await Promise.all(
+      recipients.map(async (recipient) => {
+        await sendEmail(recipient.email, subject, text);
+      })
+    );
+
+    console.log("Emails sent successfully to all recipients");
   } catch (error) {
-      console.error('Error sending announcement emails:', error);
-      throw new Error('Failed to send announcement emails');
+    console.error("Error sending announcement emails:", error);
+    throw new Error("Failed to send announcement emails");
   }
 };
 
@@ -105,7 +113,6 @@ const scheduleAnnouncement = (
   deliveryTime: Date,
   recipients: mongoose.Types.ObjectId[]
 ) => {
-
   schedule.scheduleJob(deliveryTime, async () => {
     console.log(`Scheduled job running at ${deliveryTime}`);
     const announcement = await Announcement.findByIdAndUpdate(
@@ -132,10 +139,11 @@ export const createAnnouncement = async (
   res: Response
 ): Promise<Response> => {
   try {
+    const attachment = req.file ? req.file.filename : null;
+
     const {
       title,
       message,
-      attachment,
       roleIds,
       teamIds,
       userIds,
@@ -212,13 +220,16 @@ export const createAnnouncement = async (
         { $push: { announcements: announcement._id } }
       );
       let recipientEmails: string[] = [];
-      const recipientUserIds = recipients.map(recipient => recipient._id);
+      const recipientUserIds = recipients.map((recipient) => recipient._id);
       if (recipientUserIds.length > 0) {
-        const users = await User.find({ _id: { $in: recipientUserIds } }, 'email');
-        recipientEmails = users.map(user => user.email);
+        const users = await User.find(
+          { _id: { $in: recipientUserIds } },
+          "email"
+        );
+        recipientEmails = users.map((user) => user.email);
       }
       await sendAnnouncementEmails(
-        recipientEmails.map(email => ({ email })),
+        recipientEmails.map((email) => ({ email })),
         title,
         message
       );
@@ -336,7 +347,6 @@ export const getAllAnnouncements = async (
   }
 };
 
-
 // Get a specific announcement by ID
 export const getAnnouncementById = async (
   req: Request,
@@ -373,10 +383,16 @@ export const getAnnouncementById = async (
     }).select("email");
 
     // Calculate unviewed users (recipients not present in viewedByDetails)
-    const recipientIds = announcement.recipients.map((recipient) => recipient._id.toString());
-    const viewedUserIds = announcement.viewedByDetails.map((viewed) => viewed.user._id.toString());
+    const recipientIds = announcement.recipients.map((recipient) =>
+      recipient._id.toString()
+    );
+    const viewedUserIds = announcement.viewedByDetails.map((viewed) =>
+      viewed.user._id.toString()
+    );
 
-    const unviewedUserIds = recipientIds.filter((recipientId) => !viewedUserIds.includes(recipientId));
+    const unviewedUserIds = recipientIds.filter(
+      (recipientId) => !viewedUserIds.includes(recipientId)
+    );
 
     // Fetch unviewed user details
     const unviewedUsers = await User.find({
@@ -386,7 +402,8 @@ export const getAnnouncementById = async (
     // Calculate the view percentage
     const totalRecipients = recipientIds.length;
     const viewedCount = viewedUserIds.length;
-    const viewPercentage = totalRecipients > 0 ? (viewedCount / totalRecipients) * 100 : 0;
+    const viewPercentage =
+      totalRecipients > 0 ? (viewedCount / totalRecipients) * 100 : 0;
 
     // Construct the response object
     const enrichedAnnouncement = {
@@ -595,28 +612,40 @@ export const sendEmailsToUnviewedUsers = async (
     // Find the announcement
     const announcement = await Announcement.findById(announcementId);
     if (!announcement) {
-      return res.status(404).json({ message: 'Announcement not found' });
+      return res.status(404).json({ message: "Announcement not found" });
     }
 
     // Get the list of users who have not viewed the announcement
-    const unviewedUsers = await User.find({
-      _id: { $nin: announcement.viewedBy }, // Exclude users who have already viewed
-      announcements: { $in: [announcementId] } // Include users who are supposed to see the announcement
-    }, 'email');
+    const unviewedUsers = await User.find(
+      {
+        _id: { $nin: announcement.viewedBy }, // Exclude users who have already viewed
+        announcements: { $in: [announcementId] }, // Include users who are supposed to see the announcement
+      },
+      "email"
+    );
 
     if (unviewedUsers.length === 0) {
-      return res.status(404).json({ message: 'No unviewed users found for this announcement' });
+      return res
+        .status(404)
+        .json({ message: "No unviewed users found for this announcement" });
     }
 
     // Send reminder emails to unviewed users
-    const { subject, text } = unviewedAnnouncementEmailTemplate(announcement.title, announcement.message);
-    
-    await Promise.all(unviewedUsers.map(async (user) => {
-      await sendEmail(user.email, subject, text);
-    }));
+    const { subject, text } = unviewedAnnouncementEmailTemplate(
+      announcement.title,
+      announcement.message
+    );
 
-    console.log('Reminder emails sent successfully to unviewed users');
-    return res.status(200).json({ message: 'Reminder emails sent successfully' });
+    await Promise.all(
+      unviewedUsers.map(async (user) => {
+        await sendEmail(user.email, subject, text);
+      })
+    );
+
+    console.log("Reminder emails sent successfully to unviewed users");
+    return res
+      .status(200)
+      .json({ message: "Reminder emails sent successfully" });
   } catch (error) {
     return res.status(500).json({ message: (error as Error).message });
   }

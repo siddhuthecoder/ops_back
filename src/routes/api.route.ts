@@ -35,7 +35,12 @@ import {
 router.post("/roles/create", authMiddleware, isAdmin, createHierarchyRole);
 router.get("/roles/getAll", authMiddleware, isAdmin, getAllHierarchyRoles);
 router.put("/roles/update/:id", authMiddleware, isAdmin, updateHierarchyRole);
-router.delete("/roles/delete/:id", authMiddleware, isAdmin, deleteHierarchyRole);
+router.delete(
+  "/roles/delete/:id",
+  authMiddleware,
+  isAdmin,
+  deleteHierarchyRole
+);
 
 // -------------------------
 // Location Routes
@@ -50,9 +55,19 @@ import {
 
 router.post("/locations/create", authMiddleware, isAdmin, createLocation);
 router.get("/locations/getAll", authMiddleware, getAllLocations);
-router.put("/locations/update/:locationId", authMiddleware, isAdmin, updateLocation);
+router.put(
+  "/locations/update/:locationId",
+  authMiddleware,
+  isAdmin,
+  updateLocation
+);
 router.get("/locations/get/:locationId", authMiddleware, getLocationById);
-router.delete("/locations/delete/:locationId", authMiddleware, isAdmin, deleteLocation);
+router.delete(
+  "/locations/delete/:locationId",
+  authMiddleware,
+  isAdmin,
+  deleteLocation
+);
 
 // -------------------------
 // Team Routes
@@ -86,17 +101,45 @@ import {
   getSentAnnouncementsForUser,
   sendEmailsToUnviewedUsers,
   trackAnnouncementOpen,
-  updateAnnouncement
+  updateAnnouncement,
 } from "../controllers/announcementController";
 
-router.post("/announcement/create", authMiddleware, isAdmin, createAnnouncement);
+router.post(
+  "/announcement/create",
+  authMiddleware,
+  isAdmin,
+  upload.single("attachment"),
+  createAnnouncement
+);
 router.get("/announcement/getAll", authMiddleware, getAllAnnouncements);
 router.get("/announcement/get/:id", authMiddleware, getAnnouncementById);
-router.put("/announcement/update/:id", authMiddleware, isAdmin, updateAnnouncement);
-router.delete("/announcement/delete/:id", authMiddleware, isAdmin, deleteAnnouncement);
-router.post("/announcement/:announcementId/open/:userId", trackAnnouncementOpen);
-router.post("/announcement/resend/:announcementId", authMiddleware, isAdmin, sendEmailsToUnviewedUsers);
-router.get("/announcement/user/:userId/sent", authMiddleware, getSentAnnouncementsForUser);
+router.put(
+  "/announcement/update/:id",
+  authMiddleware,
+  isAdmin,
+  updateAnnouncement
+);
+router.delete(
+  "/announcement/delete/:id",
+  authMiddleware,
+  isAdmin,
+  deleteAnnouncement
+);
+router.post(
+  "/announcement/:announcementId/open/:userId",
+  trackAnnouncementOpen
+);
+router.post(
+  "/announcement/resend/:announcementId",
+  authMiddleware,
+  isAdmin,
+  sendEmailsToUnviewedUsers
+);
+router.get(
+  "/announcement/user/:userId/sent",
+  authMiddleware,
+  getSentAnnouncementsForUser
+);
 
 // -------------------------
 // Task Routes
@@ -130,13 +173,23 @@ import {
   getParentProjects,
   getChildProjects,
 } from "../controllers/projectController";
+import upload from "../multerConfig";
 
 // Create a new project (Admin only)
 router.post("/projects/create", authMiddleware, isAdmin, createProject);
 router.get("/projects/getAll", authMiddleware, getAllProjects);
 router.get("/projects/get/:projectId", authMiddleware, getProjectById);
-router.delete("/projects/delete/:projectId", authMiddleware, isAdmin, deleteProject);
-router.get('/projects/parents',authMiddleware, getParentProjects);
-router.get('/projects/children/:parentProjectId', authMiddleware,getChildProjects);
+router.delete(
+  "/projects/delete/:projectId",
+  authMiddleware,
+  isAdmin,
+  deleteProject
+);
+router.get("/projects/parents", authMiddleware, getParentProjects);
+router.get(
+  "/projects/children/:parentProjectId",
+  authMiddleware,
+  getChildProjects
+);
 
 export default router;

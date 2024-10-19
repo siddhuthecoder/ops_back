@@ -1,0 +1,410 @@
+import { Request, Response } from "express";
+import mongoose from "mongoose";
+import schedule from "node-schedule";
+import Project from "../models/Project"; // Adjust path if needed
+import Task from "../models/Task"; // Importing the Task model
+import Team from "../models/Team";
+import User, { IUser } from "../models/User"; // Importing the User model
+import sendEmail from "../utils/emailService";
+import {
+  missedTaskEmailTemplate,
+  taskReminderEmailTemplate,
+  taskActivationEmailTemplate,
+} from "../utils/emailTemplate";
+
+// Define a custom Request type to include the user property
+interface AuthenticatedRequest extends Request {
+  user?: IUser;
+}
+const isPopulatedUser = (user: any): user is IUser =>
+  user && typeof user.email === "string";
+
+const scheduleReminder = (task: any, projectName: string) => {
+  const reminderDate = new Date(task.due_date);
+  reminderDate.setDate(reminderDate.getDate() - 1); // Set reminder to 1 day before
+
+
+
+  // Reminder job
+  schedule.scheduleJob(task._id.toString(), reminderDate, async () => {
+    const taskTitle = task.title;
+    const recipients: string[] = [];
+
+    // Loop through assign_to array
+    for (const user of task.assign_to) {
+      if (isPopulatedUser(user)) {
+        recipients.push(user.email);
+      }
+    }
+
+    if (isPopulatedUser(task.created_by)) {
+      recipients.push(task.created_by.email);
+    }
+
+    task.followers.forEach((follower: any) => {
+      if (isPopulatedUser(follower)) {
+        recipients.push(follower.email);
+      }
+    });
+
+    // Send reminder emails to unique recipients
+    const uniqueRecipients = Array.from(new Set(recipients));
+    for (const email of uniqueRecipients) {
+      const { subject, text } = taskReminderEmailTemplate(
+        taskTitle,
+        task.due_date
+      );
+      await sendEmail(email, subject, text);
+    }
+
+    console.log(`Reminder: Task "${taskTitle}" is due in 1 day.`);
+  });
+
+  // Job to mark task as missed after the due date
+  schedule.scheduleJob(
+    task._id.toString() + "-missed",
+    task.due_date,
+    async () => {
+      const foundTask = await Task.findById(task._id).populate([
+        "assign_to",
+        "created_by",
+        "followers",
+      ]);
+
+      if (foundTask && foundTask.current_status !== "Completed") {
+        foundTask.current_status = "Missed";
+        await foundTask.save();
+
+        // Notify users of missed task
+        const recipients: string[] = [];
+
+        foundTask.assign_to.forEach((user: any) => {
+          if (isPopulatedUser(user)) {
+            recipients.push(user.email);
+          }
+        });
+
+        if (isPopulatedUser(foundTask.created_by)) {
+          recipients.push(foundTask.created_by.email);
+        }
+
+        foundTask.followers.forEach((follower: any) => {
+          if (isPopulatedUser(follower)) {
+            recipients.push(follower.email);
+          }
+        });
+
+        const uniqueRecipients = Array.from(new Set(recipients));
+        for (const email of uniqueRecipients) {
+          const { subject, text } = missedTaskEmailTemplate(foundTask.title);
+          await sendEmail(email, subject, text);
+        }
+
+        console.log(`Task "${foundTask.title}" has been marked as Missed.`);
+      }
+    }
+  );
+};
+
+// Function to process input from the request body
+export const processProjectInput = (req: AuthenticatedRequest) => {
+  const {
+    title,
+    instruction,
+    team,
+    assigned_role,
+    locations_at = [],
+    followers,
+    start_date,
+    due_date,
+  } = req.body;
+
+  // Validate required fields
+  if (!title || !instruction || !team || !assigned_role || !start_date || !due_date) {
+    throw new Error("All fields are required.");
+  }
+
+  return { title, instruction, team, assigned_role, locations_at, followers, start_date, due_date };
+};
+
+
+export const createProjectLogic = async (
+  title: string,
+  instruction: string,
+  teamId: string,
+  assigned_role: string,
+  locations_at: string[],
+  followers: string[],
+  start_date: Date,
+  due_date: Date,
+  userId: string
+) => {
+  // Fetch main team details
+  const mainTeam = await Team.findById(teamId).exec();
+  if (!mainTeam) {
+    throw new Error("Main team not found.");
+  }
+
+  // Fetch child teams of the main team
+  const childTeams = await Team.find({ parent_team: teamId }).exec();
+  const allTeams = [mainTeam, ...childTeams];
+
+  let allLocations: any[] = [];
+
+  // Handle locations
+  if (locations_at.length > 0) {
+    const validLocations = locations_at.filter((locId: string) =>
+      mainTeam.locations?.some((teamLoc: any) => teamLoc.equals(locId))
+    );
+  
+    if (validLocations.length > 0) {
+      allLocations = validLocations.map(
+        (id: string) => new mongoose.Types.ObjectId(id)
+      );
+    }
+  } else {
+    allLocations = mainTeam.locations || [];
+  }
+
+  // Helper function to get assigned users based on role
+  const getAssignedUserIds = async (role: string) => {
+    const assignedUsers = await User.find({ role }).exec();
+    return assignedUsers.map((user) => user._id);
+  };
+
+  // Function to create tasks for teams and locations
+  const createTasksForLocations = async (
+    team: any,
+    locations: any[],
+    assignedUserIds: any[]
+  ) => {
+    const tasks: any[] = [];
+    await Promise.all(
+      locations.map(async (location) => {
+        const task = new Task({
+          title: `${title} - Task for ${team.team_name} at ${location.location_name}`,
+          description: `Task for project: ${title} at ${location.location_name}`,
+          created_by: userId,
+          due_date,
+          date_start: start_date,
+          assign_to: assignedUserIds,
+          followers,
+          team: team._id,
+          location,
+          project: null,
+          is_active: true,
+          current_status: "Active",
+          date_created: Date.now(),
+        });
+        const savedTask = await task.save();
+        tasks.push(savedTask);
+
+        // Schedule reminder and missed task handling
+        scheduleReminder(savedTask, title);
+      })
+    );
+    return tasks;
+  };
+
+  if (childTeams.length === 0) {
+    const assignedUserIds = await getAssignedUserIds(assigned_role);
+    const tasks = await createTasksForLocations(mainTeam, allLocations, assignedUserIds);
+
+    // Create parent project
+    const parentProject = new Project({
+      title: `${title} - Parent Project`,
+      instruction,
+      team: mainTeam._id,
+      assigned_role,
+      locations_at: allLocations,
+      no_of_tasks: tasks.length,
+      followers,
+      created_by: userId,
+      date_created: Date.now(),
+      date_modified: Date.now(),
+      tasks,
+    });
+
+    const savedParentProject = await parentProject.save();
+
+    // Link tasks to the parent project
+    await Task.updateMany(
+      { _id: { $in: tasks.map((task) => task._id) } },
+      { project: savedParentProject._id }
+    );
+
+    return { parentProject: savedParentProject };
+  }
+
+  // Handle child teams
+  const parentTasks: any[] = [];
+  const childProjectIds: mongoose.Types.ObjectId[] = [];
+  const assignedUserIds = await getAssignedUserIds(assigned_role);
+  const parentTeamTasks = await createTasksForLocations(mainTeam, allLocations, assignedUserIds);
+  parentTasks.push(...parentTeamTasks); 
+  await Promise.all(
+    childTeams.map(async (childTeam) => {
+      let childLocations = locations_at.length > 0
+        ? locations_at.filter((locId: string) =>
+            childTeam.locations?.some((teamLoc: any) => teamLoc._id.equals(locId))
+          )
+        : childTeam.locations || [];
+
+      allLocations = [...new Set([...allLocations, ...childLocations])];
+
+      const childProject = new Project({
+        title: `${title} - ${childTeam.team_name}`,
+        instruction,
+        team: childTeam._id,
+        assigned_role,
+        locations_at: childLocations,
+        no_of_tasks: childLocations.length,
+        followers,
+        created_by: userId,
+        date_created: Date.now(),
+        date_modified: Date.now(),
+      });
+
+      const savedChildProject = await childProject.save();
+      childProjectIds.push(savedChildProject._id as mongoose.Types.ObjectId);
+
+      const assignedUserIds = await getAssignedUserIds(assigned_role);
+      const childTasks = await createTasksForLocations(childTeam, childLocations, assignedUserIds);
+
+      parentTasks.push(...childTasks);
+
+      savedChildProject.tasks = childTasks;
+      savedChildProject.no_of_tasks = childTasks.length;
+      await Task.updateMany(
+        { _id: { $in: childTasks.map((task) => task._id) } },
+        { project: savedChildProject._id }
+      );
+      await savedChildProject.save();
+    })
+  );
+
+  const parentProject = new Project({
+    title: `${title} - Parent Project`,
+    instruction,
+    team: mainTeam._id,
+    assigned_role,
+    locations_at: allLocations,
+    no_of_tasks: parentTasks.length,
+    followers,
+    created_by: userId,
+    date_created: Date.now(),
+    date_modified: Date.now(),
+    tasks: parentTasks,
+    child_projects: childProjectIds,
+  });
+
+  const savedParentProject = await parentProject.save();
+
+  await Project.updateMany(
+    { _id: { $in: childProjectIds } },
+    { parent_project: savedParentProject._id }
+  );
+
+  return { parentProject: savedParentProject, childProjects: childProjectIds };
+};
+
+// Main controller function
+export const createProject = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { title, instruction, team, assigned_role, locations_at, followers, start_date, due_date } = processProjectInput(req);
+    const userId = req.user?._id as string;
+
+    const result = await createProjectLogic(
+      title,
+      instruction,
+      team,
+      assigned_role,
+      locations_at,
+      followers,
+      start_date,
+      due_date,
+      userId
+    );
+
+    res.status(201).json({
+      message: "Projects and tasks created successfully.",
+      parentProject: result.parentProject,
+      childProjects: result.childProjects,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: (error as any).message || "Internal server error." });
+  }
+};
+
+
+// Get all projects
+export const getAllProjects = async (req: Request, res: Response) => {
+  try {
+    const projects = await Project.find().populate(
+      "team assigned_role locations_at followers"
+    );
+    res.status(200).json(projects);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// Get a single project by ID
+export const getProjectById = async (req: Request, res: Response) => {
+  try {
+    const project = await Project.findById(req.params.id).populate(
+      "team assigned_role locations_at followers"
+    );
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+    res.status(200).json(project);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// Delete a project by ID
+export const deleteProject = async (req: Request, res: Response) => {
+  try {
+    const deletedProject = await Project.findByIdAndDelete(req.params.id);
+    if (!deletedProject) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+    res.status(200).json({ message: "Project deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// Fetch all projects without a parent (i.e., parent_project is null)
+export const getParentProjects = async (req: Request, res: Response) => {
+  try {
+    const parentProjects = await Project.find({ parent_project: null });
+    res.status(200).json(parentProjects);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching parent projects", error });
+  }
+};
+
+// Fetch all projects with a specific parent project ID
+export const getChildProjects = async (req: Request, res: Response) => {
+  try {
+    const { parentProjectId } = req.params;
+
+    if (!parentProjectId) {
+      return res.status(400).json({ message: "parentProjectId is required" });
+    }
+
+    const childProjects = await Project.find({
+      parent_project: parentProjectId,
+    });
+    res.status(200).json(childProjects);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching child projects", error });
+  }
+};

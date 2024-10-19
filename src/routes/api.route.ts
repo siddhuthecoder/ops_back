@@ -1,108 +1,104 @@
-import { Router } from "express";
+import { Request, Response, Router } from "express";
 import { authMiddleware, isAdmin } from "../middleware/authMiddleware";
-
+import formRoutes from './form.route';
 const router = Router();
-
-// -------------------------
-// User Routes
-// -------------------------
+import upload from "../multerConfig";
 import {
-  createUserByAdmin,
-  getAllUsers,
-  getUserProfile,
   loginUser,
-  setPassword,
+  getUserProfile,
   updateUserProfile,
+  getAllUsers,
+  createUserByAdmin,
+  setPassword,
+  deleteUser,
+  exportUsersAsExcel
 } from "../controllers/userController";
-
+// User routes
 router.post("/users/login", loginUser);
 router.get("/users/profile", authMiddleware, getUserProfile);
-router.put("/users/updateProfile", authMiddleware, updateUserProfile);
-router.get("/users/getAll", authMiddleware, isAdmin, getAllUsers);
-router.post("/users/admin/create", authMiddleware, isAdmin, createUserByAdmin);
-router.post("/users/updateDetails", authMiddleware, setPassword);
+router.put("/users/Updateprofile", authMiddleware, updateUserProfile);
+router.get("/users/getAllUsers", authMiddleware, isAdmin, getAllUsers);
+router.post("/users/admin/create-user", createUserByAdmin);
+router.post("/users/updateDetails", setPassword);
+router.delete("/users/deleteUser/:id", authMiddleware, isAdmin, deleteUser);
+router.post("/users/exportUsers/:id", authMiddleware, exportUsersAsExcel);
 
-// -------------------------
-// Role Routes
-// -------------------------
 import {
   createHierarchyRole,
-  deleteHierarchyRole,
   getAllHierarchyRoles,
   updateHierarchyRole,
+  deleteHierarchyRole,
 } from "../controllers/roleController";
+// Hierarchy routes
+router.post("/roles/add-role", authMiddleware, isAdmin, createHierarchyRole);
+router.get("/roles/getAllRoles", getAllHierarchyRoles);
+router.put("/roles/updateRole/:id", updateHierarchyRole);
+router.delete("/roles/deleteRoles/:id", deleteHierarchyRole);
 
-router.post("/roles/create", authMiddleware, isAdmin, createHierarchyRole);
-router.get("/roles/getAll", authMiddleware, isAdmin, getAllHierarchyRoles);
-router.put("/roles/update/:id", authMiddleware, isAdmin, updateHierarchyRole);
-router.delete(
-  "/roles/delete/:id",
-  authMiddleware,
-  isAdmin,
-  deleteHierarchyRole
-);
-
-// -------------------------
-// Location Routes
-// -------------------------
 import {
   createLocation,
-  deleteLocation,
+  updateLocation,
   getAllLocations,
   getLocationById,
-  updateLocation,
+  deleteLocation,
 } from "../controllers/LocationController";
-
+// Location routes
 router.post("/locations/create", authMiddleware, isAdmin, createLocation);
-router.get("/locations/getAll", authMiddleware, getAllLocations);
+router.get("/locations/getAllLocations", authMiddleware, getAllLocations);
 router.put(
-  "/locations/update/:locationId",
+  "/locations/updateLocation/:locationId",
   authMiddleware,
   isAdmin,
   updateLocation
 );
-router.get("/locations/get/:locationId", authMiddleware, getLocationById);
+router.get(
+  "/locations/getLocation/:locationId",
+  authMiddleware,
+  getLocationById
+);
 router.delete(
-  "/locations/delete/:locationId",
+  "/locations/deleteLocation/:locationId",
   authMiddleware,
   isAdmin,
   deleteLocation
 );
 
-// -------------------------
-// Team Routes
-// -------------------------
+//Team Routes
 import {
   createTeam,
+  updateTeam,
   deleteTeam,
   getAllTeams,
-  getAllTeamsInHierarchy,
   getTeamById,
   getUserByTeam,
-  updateTeam,
+  getAllTeamsInHierarchy,
 } from "../controllers/TeamController";
 
 router.post("/teams/create", authMiddleware, isAdmin, createTeam);
-router.get("/teams/getAll", authMiddleware, getAllTeams);
-router.get("/teams/get/:teamId", authMiddleware, getTeamById);
-router.put("/teams/update/:teamId", authMiddleware, isAdmin, updateTeam);
-router.delete("/teams/delete/:teamId", authMiddleware, isAdmin, deleteTeam);
+router.get("/teams/getAllTeams", authMiddleware, getAllTeams);
+router.get("/teams/getTeam/:teamId", authMiddleware, getTeamById);
+router.put("/teams/updateTeam/:teamId", authMiddleware, isAdmin, updateTeam);
+router.delete("/teams/delteTeam/:teamId", authMiddleware, isAdmin, deleteTeam);
 router.get("/teams/:teamId/users", authMiddleware, getUserByTeam);
-router.get("/teams/getAllInHierarchy", authMiddleware, getAllTeamsInHierarchy);
+router.get(
+  "/teams/getAllTeamsInHierarchy",
+  authMiddleware,
+  getAllTeamsInHierarchy
+);
 
-// -------------------------
-// Announcement Routes
-// -------------------------
+// Announcement routes
 import {
   createAnnouncement,
-  deleteAnnouncement,
   getAllAnnouncements,
   getAnnouncementById,
+  updateAnnouncement,
+  deleteAnnouncement,
+  trackAnnouncementOpen,
+  getAnnouncementsViewedByUser,
   getSentAnnouncementsForUser,
   sendEmailsToUnviewedUsers,
-  trackAnnouncementOpen,
-  updateAnnouncement,
 } from "../controllers/announcementController";
+
 
 router.post(
   "/announcement/create",
@@ -111,18 +107,24 @@ router.post(
   upload.single("attachment"),
   createAnnouncement
 );
-router.get("/announcement/getAll", authMiddleware, getAllAnnouncements);
-router.get("/announcement/get/:id", authMiddleware, getAnnouncementById);
-router.put(
-  "/announcement/update/:id",
+router.get(
+  "/announcement/getAllAnnouncements",
   authMiddleware,
-  isAdmin,
+  getAllAnnouncements
+);
+router.get(
+  "/announcement/getAnnouncementById/:id",
+  authMiddleware,
+  getAnnouncementById
+);
+router.put(
+  "/announcement/updateAnnouncement/:id",
+  authMiddleware,
   updateAnnouncement
 );
 router.delete(
-  "/announcement/delete/:id",
+  "/announcement/deleteAnnouncement/:id",
   authMiddleware,
-  isAdmin,
   deleteAnnouncement
 );
 router.post(
@@ -132,64 +134,51 @@ router.post(
 router.post(
   "/announcement/resend/:announcementId",
   authMiddleware,
-  isAdmin,
   sendEmailsToUnviewedUsers
 );
-router.get(
-  "/announcement/user/:userId/sent",
-  authMiddleware,
-  getSentAnnouncementsForUser
-);
+router.get("/announcement/user/:userId/sent", getSentAnnouncementsForUser);
+
+
 
 // -------------------------
 // Task Routes
 // -------------------------
 import {
-  addCommentToTask,
   createTask,
   deleteTask,
   getAllTasks,
   getTaskById,
   getTasksByFilter,
   updateTask,
+  taskCompletion,
+  addCommentToTask,
+  getCommentsForTask,
+  exportTaskAsExcel
 } from "../controllers/taskController";
 
-router.post("/tasks/create", authMiddleware, isAdmin, createTask);
+router.post(
+  "/tasks/create",
+  authMiddleware,
+  isAdmin,
+  upload.array("images", 5),
+  createTask
+);
 router.get("/tasks/getAll", authMiddleware, getAllTasks);
 router.get("/tasks/get/:taskId", authMiddleware, getTaskById);
 router.put("/tasks/update/:taskId", authMiddleware, isAdmin, updateTask);
 router.delete("/tasks/delete/:taskId", authMiddleware, isAdmin, deleteTask);
-router.post("/tasks/:taskId/addComment", authMiddleware, addCommentToTask);
 router.get("/tasks/filter", authMiddleware, getTasksByFilter);
+router.post("/tasks/complete/:taskId",authMiddleware,taskCompletion)
+router.post("/tasks/:taskId/comments",authMiddleware, addCommentToTask); 
+router.get("/tasks/:taskId/comments", authMiddleware,getCommentsForTask);
+router.get("/tasks/exportTask/:id",authMiddleware,exportTaskAsExcel);
 
-// -------------------------
-// Project Routes
-// -------------------------
-import {
-  createProject,
-  deleteProject,
-  getAllProjects,
-  getProjectById,
-  getParentProjects,
-  getChildProjects,
-} from "../controllers/projectController";
-import upload from "../multerConfig";
 
-// Create a new project (Admin only)
-router.post("/projects/create", authMiddleware, isAdmin, createProject);
-router.get("/projects/getAll", authMiddleware, getAllProjects);
-router.get("/projects/get/:projectId", authMiddleware, getProjectById);
-router.delete(
-  "/projects/delete/:projectId",
-  authMiddleware,
-  isAdmin,
-  deleteProject
-);
-router.get("/projects/parents", authMiddleware, getParentProjects);
-router.get(
-  "/projects/children/:parentProjectId",
-  authMiddleware,
-  getChildProjects
-);
+//Dashboard Routes
+import { getTeamTasks } from '../controllers/dashboardController';
+router.get('/dashboard/tasks/:teamId?', getTeamTasks);
+
+//Form Routes
+router.use("/forms", formRoutes);
 
 export default router;

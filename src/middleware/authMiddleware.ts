@@ -19,6 +19,8 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
 
             // Get user from token
             req.user = await User.findById(decoded._id).select('-password');
+            console.log("User in MiddleWare")
+            console.log(req.user)
             next();
         } catch (error) {
             return res.status(401).json({ message: 'Not authorized, token failed' });

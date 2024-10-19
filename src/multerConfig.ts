@@ -8,7 +8,7 @@ const storage: StorageEngine = multer.diskStorage({
     file: Express.Multer.File,
     cb: (error: Error | null, destination: string) => void
   ) => {
-    cb(null, "uploads");
+    cb(null, path.join(__dirname, "uploads"));
   },
   filename: (
     req: Request,
@@ -22,7 +22,7 @@ const storage: StorageEngine = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 1000000 },
+  limits: { fileSize: 2000000 },
 });
 
 export default upload;

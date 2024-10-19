@@ -1,12 +1,14 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema } from "mongoose";
 
 export interface ITask extends Document {
   title: string;
   description: string;
   image_urls: string[];
-  current_status: 'Active' | 'Missed' | 'Completed' | 'Deleted' | 'inProgress';
+  current_status: "Active" | "Missed" | "Completed" | "Deleted" | "inProgress" | "Archived"; 
   created_by: mongoose.Types.ObjectId;
-  submitted_by?: mongoose.Types.ObjectId; // New field for tracking who submitted the task
+  submitted_by?: mongoose.Types.ObjectId; 
+  submission_id?: mongoose.Types.ObjectId; // Field for linking a task to a submission
+  form_id?: mongoose.Types.ObjectId; // New field for linking a task to a form
   date_created: Date;
   due_date: Date;
   date_start: Date;
@@ -14,7 +16,7 @@ export interface ITask extends Document {
   is_active: boolean;
   is_closed: boolean;
   is_expired: boolean;
-  assign_to: mongoose.Types.ObjectId[]; // Updated to array of users
+  assign_to: mongoose.Types.ObjectId; 
   comments: {
     user: mongoose.Types.ObjectId;
     comment: string;
@@ -23,7 +25,7 @@ export interface ITask extends Document {
   followers: mongoose.Types.ObjectId[];
   location?: mongoose.Types.ObjectId;
   team?: mongoose.Types.ObjectId;
-  project?: mongoose.Types.ObjectId; // New field for referencing the Project model
+  project?: mongoose.Types.ObjectId; 
 }
 
 const TaskSchema: Schema<ITask> = new Schema(
@@ -46,18 +48,28 @@ const TaskSchema: Schema<ITask> = new Schema(
     ],
     current_status: {
       type: String,
-      enum: ['Active', 'Missed', 'Completed', 'Deleted', 'inProgress'],
-      default: 'Active',
+      enum: ["Active", "Missed", "Completed", "Deleted", "inProgress", "Archived"],
+      default: "Active",
     },
     created_by: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
     },
     submitted_by: {
       type: Schema.Types.ObjectId,
-      ref: 'User', // New reference to the User model
-      required: false, // Optional field
+      ref: "User",
+      required: false,
+    },
+    submission_id: { // Field for submission reference
+      type: Schema.Types.ObjectId,
+      ref: "Submission",
+      required: false,
+    },
+    form_id: { // New field for form reference
+      type: Schema.Types.ObjectId,
+      ref: "Form", // Referencing the 'Form' schema
+      required: false,
     },
     date_created: {
       type: Date,
@@ -74,53 +86,33 @@ const TaskSchema: Schema<ITask> = new Schema(
     date_submitted: {
       type: Date,
     },
-    assign_to: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: 'User',
-      },
-    ],
-    comments: [
-      {
-        user: {
-          type: Schema.Types.ObjectId,
-          ref: 'User',
-          required: true,
-        },
-        comment: {
-          type: String,
-          required: true,
-          trim: true,
-        },
-        date_created: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
+    assign_to: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
     followers: [
       {
         type: Schema.Types.ObjectId,
-        ref: 'User',
+        ref: "User",
       },
     ],
     location: {
       type: Schema.Types.ObjectId,
-      ref: 'Location',
+      ref: "Location",
     },
     team: {
       type: Schema.Types.ObjectId,
-      ref: 'Team',
+      ref: "Team",
     },
     project: {
       type: Schema.Types.ObjectId,
-      ref: 'Project', // New reference to the Project model
-      required: false, // Optional field
-    },
+      ref: "Project",
+      required: false,
+    },    
   },
   {
     timestamps: true,
   }
 );
 
-export default mongoose.model<ITask>('Task', TaskSchema);
+export default mongoose.model<ITask>("Task", TaskSchema);

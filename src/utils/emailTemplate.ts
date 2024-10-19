@@ -143,3 +143,21 @@ Best regards,
 
   return { subject, text };
 };
+
+
+// User export email template
+export const userExportEmailTemplate = (): { subject: string; text: string } => {
+  const subject = `Exported User Data`;
+  const text = `Dear user,
+
+As per your request, the user data export has been completed. Attached is an Excel file containing the details of all users, including their first name, last name, email, phone, date joined, permissions, role, team, and location.
+
+Please review the data and let us know if you need further assistance.
+
+Best regards,
+[OPS-360]`;
+
+  return { subject, text };
+};
+
+

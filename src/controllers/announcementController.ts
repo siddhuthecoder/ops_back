@@ -140,7 +140,7 @@ export const createAnnouncement = async (
 ): Promise<Response> => {
   try {
     const attachment = req.file ? req.file.filename : null;
-
+    console.log(attachment)
     const {
       title,
       message,
@@ -160,7 +160,7 @@ export const createAnnouncement = async (
       1
     ) {
       return res.status(400).json({
-        message: "Please select only one of roleIds, teamIds, or userIds",
+        message: "Please select only one of  roleIds, teamIds, or userIds",
       });
     }
 
@@ -199,7 +199,7 @@ export const createAnnouncement = async (
       createdBy: req.user!._id,
       sentDate: sendImmediately ? new Date() : undefined,
       status,
-      sentTo: { teamIds, roleIds, userIds }, // Add sentTo field
+      sentTo: { teamIds, roleIds, userIds }, 
     });
 
     await announcement.save();
@@ -263,13 +263,23 @@ export const getAllAnnouncements = async (
       filter.status = status; // Apply status filter if present
     }
 
-    // Find all announcements matching the filter and populate the related fields
+    // Find all announcements matching the filter, sort by sentDate descending, and populate the related fields
     const announcements = await Announcement.find(filter)
-      .populate("recipients", "email firstname lastname")
-      .populate("createdBy", "email firstname lastname")
+      .sort({ sentDate: -1 }) // Sort by sentDate in descending order (most recent first)
+      .populate({
+        path: "recipients",
+        select: "email firstname lastname",
+        populate: [{ path: "role", model: "Hierarchy", select: "role" }],
+      })
+      .populate({
+        path: "createdBy",
+        select: "email firstname lastname",
+        populate: [{ path: "role", model: "Hierarchy", select: "role" }],
+      })
       .populate({
         path: "viewedByDetails.user",
         select: "email firstname lastname",
+        populate: [{ path: "role", model: "Hierarchy", select: "role" }],
       })
       .exec();
 
@@ -347,7 +357,7 @@ export const getAllAnnouncements = async (
   }
 };
 
-// Get a specific announcement by ID
+
 export const getAnnouncementById = async (
   req: Request,
   res: Response
@@ -553,7 +563,6 @@ export const trackAnnouncementOpen = async (
     return res.status(500).json({ message: (error as Error).message });
   }
 };
-
 // Get all announcements viewed by a user
 export const getAnnouncementsViewedByUser = async (
   req: Request,
